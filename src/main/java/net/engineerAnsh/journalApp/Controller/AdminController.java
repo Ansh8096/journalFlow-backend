@@ -3,11 +3,11 @@ package net.engineerAnsh.journalApp.Controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import net.engineerAnsh.journalApp.Dto.admin.CreateAdminDto;
 import net.engineerAnsh.journalApp.Dto.common.MessageResponseDto;
 import net.engineerAnsh.journalApp.Dto.user.UserProfileResponseDto;
 import net.engineerAnsh.journalApp.Service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,11 +17,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasRole('ADMIN')")
+@RequiredArgsConstructor
 @Tag(name = "Admin APIs" , description = "Get-All-Users, Create-Admin & Run-App-Cache")
 public class AdminController {
 
-    @Autowired
-    private UserService userService;
+
+    private final UserService userService;
 
     @GetMapping("/all-users")
     @Operation(summary = "See all the existing users")

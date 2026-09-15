@@ -11,9 +11,7 @@ import net.engineerAnsh.journalApp.Repository.JournalRepository;
 import net.engineerAnsh.journalApp.Repository.UserRepository;
 import net.engineerAnsh.journalApp.Utils.JwtUtils;
 import net.engineerAnsh.journalApp.enums.Role;
-import net.engineerAnsh.journalApp.exception.exceptions.DuplicateResourceException;
-import net.engineerAnsh.journalApp.exception.exceptions.ResourceNotFoundException;
-import net.engineerAnsh.journalApp.exception.exceptions.BadRequestException;
+import net.engineerAnsh.journalApp.exception.exceptions.*;
 import org.bson.types.ObjectId;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -50,7 +48,9 @@ public class UserService {
                 user.getRoles(),
                 user.getProfileImageUrl(),
                 user.getCreatedAt(),
-                user.getUpdatedAt()
+                user.getUpdatedAt(),
+                user.hasPassword(),
+                user.hasGoogle()
         );
     }
 
@@ -60,6 +60,15 @@ public class UserService {
                 token,
                 "Bearer"
         );
+    }
+
+    private void requirePasswordAuthentication(User user) {
+
+        if (!user.hasPassword()) {
+            throw new ForbiddenException(
+                    "Password changes are not available for Google-only accounts."
+            );
+        }
     }
 
     public void saveUser(User user) {
@@ -95,72 +104,183 @@ public class UserService {
         userRepository.save(user);
     }
 
-    public void changePassword(ChangePasswordRequestDto request) {
+    public void changePassword(
+            ChangePasswordRequestDto request
+    ) {
 
         String userName = getLoggedInUser();
-        User user = findUserByUserName(userName); // getting the user by its userName...
 
-        if (user == null) throw new ResourceNotFoundException("User not Found");
+        User user =
+                findUserByUserName(userName);
 
-        // Verify current password
-        if (!passwordEncoder.matches(
-                request.getCurrentPassword(),
-                user.getPassword())) {
-
-            throw new BadRequestException("Current password is incorrect.");
+        if (user == null) {
+            throw new ResourceNotFoundException(
+                    "User not Found"
+            );
         }
 
-        // Check new password confirmation
+        /*
+         * ----------------------------------------
+         * Account authentication capability
+         * ----------------------------------------
+         *
+         * Google-only accounts do not have a
+         * password and therefore cannot change one.
+         */
+        requirePasswordAuthentication(user);
+
+        /*
+         * ----------------------------------------
+         * Verify current password
+         * ----------------------------------------
+         */
+        if (!passwordEncoder.matches(
+                request.getCurrentPassword(),
+                user.getPassword()
+        )) {
+
+            throw new BadRequestException(
+                    "Current password is incorrect."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Confirm new password
+         * ----------------------------------------
+         */
         if (!request.getNewPassword()
                 .equals(request.getConfirmPassword())) {
 
-            throw new BadRequestException("New password and confirm password do not match.");
+            throw new BadRequestException(
+                    "New password and confirm password do not match."
+            );
         }
 
-        // Prevent same password
+        /*
+         * ----------------------------------------
+         * Prevent reusing current password
+         * ----------------------------------------
+         */
         if (passwordEncoder.matches(
                 request.getNewPassword(),
-                user.getPassword())) {
+                user.getPassword()
+        )) {
 
-            throw new BadRequestException("New password cannot be the same as the current password.");
+            throw new BadRequestException(
+                    "New password cannot be the same as the current password."
+            );
         }
 
-        // Encode and save
+        /*
+         * ----------------------------------------
+         * Save new password
+         * ----------------------------------------
+         */
         user.setPassword(
-                passwordEncoder.encode(request.getNewPassword())
+                passwordEncoder.encode(
+                        request.getNewPassword()
+                )
         );
 
         userRepository.save(user);
     }
 
-    public void changeEmail(ChangeEmailRequestDto request) {
+    public void changeEmail(
+            ChangeEmailRequestDto request
+    ) {
 
         String userName = getLoggedInUser();
-        User user = findUserByUserName(userName); // getting the user by its userName...
 
-        if (user == null) throw new ResourceNotFoundException("User not Found");
+        User user =
+                findUserByUserName(userName);
 
-        // Verify password
-        if (!passwordEncoder.matches(
-                request.getPassword(),
-                user.getPassword())) {
-
-            throw new BadRequestException("Password is incorrect.");
+        if (user == null) {
+            throw new ResourceNotFoundException(
+                    "User not Found"
+            );
         }
 
-        // Check if email is already in use
-        if (userRepository.existsByEmail(request.getNewEmail()))
+        /*
+         * ----------------------------------------
+         * Google-linked accounts
+         * ----------------------------------------
+         *
+         * JournalFlow keeps the email immutable
+         * once Google is linked.
+         *
+         * This covers:
+         *
+         * Google-only      → blocked
+         * Local + Google   → blocked
+         */
+        if (user.hasGoogle()) {
+
+            throw new ForbiddenException(
+                    "Email changes are not available for Google-linked accounts."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Local-only account
+         * ----------------------------------------
+         */
+        requirePasswordAuthentication(user);
+
+        /*
+         * ----------------------------------------
+         * Verify current password
+         * ----------------------------------------
+         */
+        if (!passwordEncoder.matches(
+                request.getPassword(),
+                user.getPassword()
+        )) {
+
+            throw new BadRequestException(
+                    "Password is incorrect."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Check email availability
+         * ----------------------------------------
+         */
+        if (userRepository.existsByEmail(
+                request.getNewEmail()
+        )) {
+
             throw new DuplicateResourceException(
                     "newEmail",
                     "Email already exists."
             );
-
-        // Prevent updating to same email
-        if (user.getEmail().equalsIgnoreCase(request.getNewEmail())) {
-            throw new BadRequestException("New email cannot be the same as the current email.");
         }
 
-        user.setEmail(request.getNewEmail());
+        /*
+         * ----------------------------------------
+         * Prevent same email
+         * ----------------------------------------
+         */
+        if (user.getEmail()
+                .equalsIgnoreCase(
+                        request.getNewEmail()
+                )) {
+
+            throw new BadRequestException(
+                    "New email cannot be the same as the current email."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Save new email
+         * ----------------------------------------
+         */
+        user.setEmail(
+                request.getNewEmail()
+        );
 
         userRepository.save(user);
     }
@@ -195,28 +315,191 @@ public class UserService {
 
     }
 
-    public void deleteTheUser(DeleteAccountRequestDto request) {
-        String userName = getLoggedInUser();
-        User user = findUserByUserName(userName);
-        if (user == null) throw new ResourceNotFoundException("User not Found");
+    @Transactional
+    public void deleteUser(
+            DeleteAccountRequestDto request
+    ) {
 
-        // Verify password
-        if (!passwordEncoder.matches(
-                request.getPassword(),
-                user.getPassword())) {
+        String userName =
+                getLoggedInUser();
 
-            throw new BadRequestException("Password is incorrect.");
+        User user =
+                findUserByUserName(userName);
+
+        if (user == null) {
+            throw new ResourceNotFoundException(
+                    "User not Found"
+            );
         }
 
-        // collect all the id's of the journal, and then delete all the journals corresponding to these id's...
-        List<ObjectId> journalEntriesIds = user.getJournals()
-                .stream()
-                .map(Journal::getId)
-                .toList();
+        /*
+         * ----------------------------------------
+         * Google-only accounts
+         * ----------------------------------------
+         */
+        requirePasswordAuthentication(user);
 
-        journalRepository.deleteAllById(journalEntriesIds);
+        /*
+         * ----------------------------------------
+         * Verify current password
+         * ----------------------------------------
+         */
+        if (!passwordEncoder.matches(
+                request.getPassword(),
+                user.getPassword()
+        )) {
 
-        userRepository.deleteByUsername(userName);// Deletes the user directly from MongoDB using their username...
+            throw new BadRequestException(
+                    "Password is incorrect."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Delete user's journals
+         * ----------------------------------------
+         */
+        List<ObjectId> journalEntriesIds =
+                user.getJournals()
+                        .stream()
+                        .map(Journal::getId)
+                        .toList();
+
+        journalRepository.deleteAllById(
+                journalEntriesIds
+        );
+
+        /*
+         * ----------------------------------------
+         * Delete user
+         * ----------------------------------------
+         */
+        userRepository.deleteByUsername(
+                userName
+        );
+    }
+
+    @Transactional
+    public void deleteGoogleOnlyAccount(
+            String userId,
+            String googleSubject
+    ) {
+
+        if (
+                userId == null ||
+                        userId.isBlank()
+        ) {
+
+            throw new UnauthorizedException(
+                    "Delete-account identity is missing."
+            );
+        }
+
+        if (
+                googleSubject == null ||
+                        googleSubject.isBlank()
+        ) {
+
+            throw new UnauthorizedException(
+                    "Google identity is missing."
+            );
+        }
+
+        ObjectId objectId;
+
+        try {
+
+            objectId =
+                    new ObjectId(userId);
+
+        } catch (IllegalArgumentException ex) {
+
+            throw new UnauthorizedException(
+                    "Delete-account identity is invalid."
+            );
+        }
+
+        User user =
+                userRepository
+                        .findById(objectId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found."
+                                )
+                        );
+
+        /*
+         * ----------------------------------------
+         * SECURITY RULE #1
+         *
+         * Only Google-only accounts can use
+         * this deletion path.
+         * ----------------------------------------
+         */
+        if (user.hasPassword()) {
+
+            throw new ForbiddenException(
+                    "This account must be deleted using its password."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * SECURITY RULE #2
+         *
+         * The account must actually be linked
+         * with Google.
+         * ----------------------------------------
+         */
+        if (!user.hasGoogle()) {
+
+            throw new ForbiddenException(
+                    "This account is not linked with Google."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * SECURITY RULE #3
+         *
+         * Google subject from the fresh OAuth
+         * authentication must exactly match the
+         * Google identity linked to this account.
+         * ----------------------------------------
+         */
+        if (
+                !user.getGoogleSubject()
+                        .equals(googleSubject)
+        ) {
+
+            throw new UnauthorizedException(
+                    "Google account does not match this user."
+            );
+        }
+
+        /*
+         * ----------------------------------------
+         * Delete journals.
+         * ----------------------------------------
+         */
+        List<ObjectId> journalEntriesIds =
+                user.getJournals()
+                        .stream()
+                        .map(Journal::getId)
+                        .toList();
+
+        journalRepository.deleteAllById(
+                journalEntriesIds
+        );
+
+        /*
+         * ----------------------------------------
+         * Delete user.
+         * ----------------------------------------
+         */
+        userRepository.deleteById(
+                objectId
+        );
     }
 
     @Transactional

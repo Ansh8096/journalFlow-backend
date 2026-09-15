@@ -77,4 +77,14 @@ public class User {
      */
     @Indexed(unique = true, sparse = true)
     private String googleSubject;
+
+    public boolean hasPassword() {
+        return password != null
+                && !password.isBlank();
+    }
+
+    public boolean hasGoogle() {
+        return googleSubject != null
+                && !googleSubject.isBlank();
+    }
 }

@@ -30,4 +30,8 @@ public class UserProfileResponseDto {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    private boolean hasPassword;
+
+    private boolean hasGoogle;
 }

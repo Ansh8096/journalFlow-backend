@@ -75,7 +75,7 @@ public class UserController {
     public ResponseEntity<MessageResponseDto> deleteTheUser(
             @Valid @RequestBody DeleteAccountRequestDto request
     ) {
-        userService.deleteTheUser(request);
+        userService.deleteUser(request);
         return ResponseEntity.ok(
                 MessageResponseDto.builder()
                         .message("User deleted successfully.").build()

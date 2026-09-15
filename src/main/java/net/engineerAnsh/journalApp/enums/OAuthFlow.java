@@ -1,8 +1,7 @@
 package net.engineerAnsh.journalApp.enums;
 
 public enum OAuthFlow {
-
     LOGIN,
-
-    SIGNUP
+    SIGNUP,
+    DELETE_ACCOUNT
 }

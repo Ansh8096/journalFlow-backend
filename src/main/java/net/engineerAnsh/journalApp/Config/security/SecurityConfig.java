@@ -19,6 +19,8 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -37,6 +39,7 @@ public class SecurityConfig {
     private final GoogleOAuth2SuccessHandler googleOAuth2SuccessHandler;
     private final GoogleOAuth2FailureHandler googleOAuth2FailureHandler;
     private final UserDetailsServiceImpl userDetails;
+    private final ClientRegistrationRepository clientRegistrationRepository;
 
     @Value("${app.cors.allowed-origin}")
     private String allowedOrigin;
@@ -143,7 +146,14 @@ public class SecurityConfig {
                  * ----------------------------------------
                  */
                 .oauth2Login(
-                        oauth2 -> oauth2
+                        oauth -> oauth
+                                .authorizationEndpoint(
+                                        endpoint ->
+                                                endpoint
+                                                        .authorizationRequestResolver(
+                                                                googleAuthorizationRequestResolver()
+                                                        )
+                                )
                                 .successHandler(
                                         googleOAuth2SuccessHandler
                                 )
@@ -175,7 +185,8 @@ public class SecurityConfig {
      */
     @Bean
     public DaoAuthenticationProvider configureGlobal(
-            AuthenticationManagerBuilder auth
+            AuthenticationManagerBuilder auth,
+            PasswordEncoder passwordEncoder
     ) throws Exception {
 
         DaoAuthenticationProvider authProvider =
@@ -186,20 +197,10 @@ public class SecurityConfig {
         );
 
         authProvider.setPasswordEncoder(
-                passwordEncoder()
+                passwordEncoder
         );
 
         return authProvider;
-    }
-
-    /*
-     * ----------------------------------------
-     * PASSWORD ENCODER
-     * ----------------------------------------
-     */
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 
     /*
@@ -264,5 +265,14 @@ public class SecurityConfig {
         );
 
         return source;
+    }
+
+    @Bean
+    public OAuth2AuthorizationRequestResolver
+    googleAuthorizationRequestResolver() {
+
+        return new GoogleAuthorizationRequestResolver(
+                clientRegistrationRepository
+        );
     }
 }
